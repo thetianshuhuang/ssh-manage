@@ -11,7 +11,23 @@ dev.connect()
 dev.run("cd /; ls")
 """
 
-import settings
+
+SETTINGS = {
+    "AUTO_ADD_MISSING_HOST": True
+}
+
+
+def _settings(key, value):
+    """Change module settings.
+
+    Parameters
+    ----------
+    key : str
+        Key to change
+    value : str
+        Value to set
+    """
+    SETTINGS[key] = value
 
 
 try:
@@ -34,14 +50,29 @@ class ManagedDevice:
         Username at the target device
     pw : str
         Target device password
+    kwargs : dict
+        All other keyword args passed directly to object parameters. Names
+        cannot be any of the names in PROTECTED_NAMES.
     """
 
-    def __init__(self, name, ip="127.0.0.1", user="pi", pw=""):
+    #: Names that should be protected from add_property.
+    PROTECTED_NAMES = [
+        "name", "ip", "user", "pw", "connected", "ssh",
+        "add_property", "connect", "disconnect", "run", "run_format",
+        "__init__", "__del__"]
+
+    def __init__(
+            self,
+            name="Undefined", ip="127.0.0.1", user="pi", pw="",
+            **kwargs):
 
         self.name = name
         self.ip = ip
         self.user = user
         self.pw = pw
+
+        for key, value in kwargs.items():
+            self.add_property(key, value=value)
 
         self.connected = False
 
@@ -64,7 +95,11 @@ class ManagedDevice:
             Value to set
         """
 
-        if name not in ["name", "ip", "user", "pw", "connected", "ssh"]:
+        if name in self.PROTECTED_NAMES:
+            raise Exception(
+                "Attempted to set protected value of ManagedDevice. "
+                "Protected names: " + str(self.PROTECTED_NAMES))
+        else:
             setattr(self, name, value)
 
     def connect(self):
@@ -83,7 +118,7 @@ class ManagedDevice:
         self.ssh = paramiko.SSHClient()
 
         # Check for missing host policy
-        if settings.AUTO_ADD_MISSING_HOST:
+        if SETTINGS["AUTO_ADD_MISSING_HOST"]:
             self.ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy)
 
         try:
@@ -144,123 +179,3 @@ class ManagedDevice:
             raise Exception("Could not construct format string:\n" + str(e))
 
         return self.run(command)
-
-
-class DeviceGroup:
-    """Group of devices
-
-    Use this class for programmatic parallel management of a number of
-    devices.
-
-    SSH Connections are initiated on init or add; connections are dropped
-    on remove or del.
-
-    Parameters
-    ----------
-    devices : ManagedDevice[]
-        Array of devices to manage. Should not be connected.
-    """
-
-    def __init__(self, devices):
-
-        self.devices = {device.name: device for device in devices}
-        self._iter_devices(lambda device: device.connect())
-
-    def __del__(self):
-        """Disconnect function to run on garbage collect
-
-        Prevents garbage collection of the DeviceGroup without first
-        terminating the SSH connections.
-        """
-        self.disconnect()
-
-    def __len__(self):
-        """__len__ function for interfacing with Python's ``len`` builtin"""
-
-        return len(self.devices)
-
-    def _iter_devices(self, function):
-        """Private function to iterate over all devices.
-
-        Parameters
-        ----------
-        function : function
-            Function to run on all devices
-        """
-
-        return {
-            name: function(device)
-            for name, device in self.devices.items()
-        }
-
-    def add_device(self, device):
-        """Add a device and start the SSH connection.
-
-        Parameters
-        ----------
-        device : ManagedDevice
-            Device to add
-        """
-
-        self.devices[device.name] = device
-        device.connect()
-
-    def remove_device(self, device):
-        """Remove a device from the SSH connection.
-
-        Parameters
-        ----------
-        device : ManagedDevice
-            Device to remove
-        """
-
-        if type(device) == str:
-            self.devices[device].disconnect()
-            del self.devices[device]
-        else:
-            device.disconnect()
-            del self.devices[device.name]
-
-    def run(self, command):
-        """Run a command on all devices.
-
-        Parameters
-        ----------
-        command : str
-            Command to run
-
-        Returns
-        -------
-        str[][]
-            Array of results obtained by ManagedDevice.run_format
-        """
-
-        return self._iter_devices(lambda device: device.run_format(command))
-
-    def disconnect(self):
-        """Disconnect all devices."""
-
-        self._iter_devices(lambda device: device.disconnect())
-
-
-def make_group(devices):
-    """Make a DeviceGroup from a list of dictionaries.
-
-    Parameters
-    ----------
-    devices : dict[]
-        Each entry should have "name", "ip", "user", and "pw".
-
-    Returns
-    -------
-    DeviceGroup
-        Created DeviceGroup class.
-    """
-
-    return DeviceGroup([
-        ManagedDevice(
-            device["name"],
-            ip=device["ip"],
-            user=device["user"],
-            pw=device["pw"])
-        for device in devices])
