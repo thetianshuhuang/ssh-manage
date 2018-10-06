@@ -17,7 +17,7 @@ SETTINGS = {
 }
 
 
-def _settings(key, value):
+def change_settings(key, value):
     """Change module settings.
 
     Parameters
