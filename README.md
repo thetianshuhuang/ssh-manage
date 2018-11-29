@@ -33,6 +33,16 @@ device_2 > test_folder
            secrets.txt
            test_file.py
 
+SSH Group | touch {name}.txt
+device_1 > [no output]
+
+device_2 > [no output]
+
+SSH Group | ls
+device_1 > device_1.txt
+
+device_2 > device_2.txt
+
 SSH Group | cd ~/test_folder; ls
 device_1 > bash: cd: test_folder: No such file or directory
 
